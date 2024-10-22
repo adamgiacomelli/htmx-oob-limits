@@ -1,0 +1,15 @@
+.tile {
+  border: 1px solid gray;
+  display: inline-block;
+  height: 50px;
+  width: 50px;
+  text-align: center;
+}
+
+.row {
+  display: flex;
+}
+
+.wrapper {
+
+}
