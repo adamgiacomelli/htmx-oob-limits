@@ -1,0 +1,18 @@
+[package]
+name = "htmx-oob-limits"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+actix-web = "4"
+actix-web-lab = "0.23.0"
+futures-util = { version = "0.3.17", default-features = false, features = ["std"] }
+tokio = { version = "1.24.2", features = ["sync", "io-util"] }
+tokio-stream = "0.1.1"
+parking_lot = "0.12"
+maud = { version = "0.26.0" ,features = ["actix-web"] }
+actix-rt = "2.10.0"
+hex_color = { version = "3.0.0" ,features = ["rand"] }
+rand = "0.8.5"
+log = "0.4.22"
+env_logger = "0.11.5"
