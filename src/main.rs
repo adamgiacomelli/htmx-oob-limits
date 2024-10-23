@@ -1,6 +1,7 @@
 use actix_files as fs;
 use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
 use broadcast::Broadcaster;
+use clap::Parser;
 use hex_color::{Display, HexColor};
 use maud::{html, DOCTYPE};
 use rand::Rng;
@@ -12,8 +13,11 @@ use std::{
     time::Duration,
 };
 use tokio::time::interval;
+use utils::rgb_to_rounded_hex_color_string;
 use video_processor::{extract_and_process_frames, generate_grid, Tile};
+
 mod broadcast;
+mod utils;
 mod video_processor;
 
 struct AppState {
@@ -23,38 +27,41 @@ struct AppState {
     broadcaster: Arc<Broadcaster>,
 }
 
-static GRID_SIZE: usize = 15;
-static SIZE_RECT: i32 = 10;
-static RANDOM: bool = false;
-
-fn to_hex_color(c: [u8; 3]) -> String {
-    // Helper function to round numbers to the nearest 10
-    fn round_to_nearest_ten(n: u8) -> u8 {
-        // n
-        ((n as f32 / 10.0).round() * 10.0) as u8
-    }
-
-    // Applying rounding to each color component
-    let rounded_r = round_to_nearest_ten(c[0]);
-    let rounded_g = round_to_nearest_ten(c[1]);
-    let rounded_b = round_to_nearest_ten(c[2]);
-
-    format!("#{:02X}{:02X}{:02X}", rounded_r, rounded_g, rounded_b)
+#[derive(Parser, Clone)]
+struct AppConfig {
+    mode: String,
+    #[clap(default_value = "8080")]
+    port: u16,
+    #[clap(default_value = "127.0.0.1")]
+    bind_ip: String,
+    #[clap(default_value = "15")]
+    grid_size: usize,
+    #[clap(default_value = "10")]
+    size_rect: i32,
+    #[clap(default_value = "example.mp4")]
+    video_path: String,
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    let args = AppConfig::parse();
+
+    let mode = args.mode;
+    let video_path = args.video_path;
+    let grid_size = args.grid_size;
+    let size_rect = args.size_rect;
+
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
-    let video_path = "example.mp4";
-    let frame_data = extract_and_process_frames(video_path, GRID_SIZE)?;
+    let frame_data = extract_and_process_frames(&video_path, grid_size)?;
 
     let state = Arc::new(AppState {
         app_name: String::from("HTMX grid oob"),
-        grid: generate_grid(GRID_SIZE),
+        grid: generate_grid(grid_size),
         frame_data,
         broadcaster: Broadcaster::create(),
     });
+
     let state_clone = Arc::clone(&state);
 
     let is_running = Arc::new(AtomicBool::new(false));
@@ -72,35 +79,33 @@ async fn main() -> std::io::Result<()> {
         loop {
             interval.tick().await;
 
-            if RANDOM {
+            if mode == "random" {
                 let random_rgb: HexColor = rand::random();
                 let html_color_str = Display::new(random_rgb);
 
-                let id_row = rng_gen.gen_range(0..GRID_SIZE);
-                let id_col = rng_gen.gen_range(0..GRID_SIZE);
+                let id_row = rng_gen.gen_range(0..grid_size);
+                let id_col = rng_gen.gen_range(0..grid_size);
                 let id = format!("{id_row}_{id_col}");
                 let body = html! {
                     #{"t"(id)} hx-swap-oob="true" style={"background:"(html_color_str)} { (id) }
                 };
 
                 state_clone.broadcaster.broadcast(&body.into_string()).await;
-            } else {
+            } else if mode == "video" {
                 for (id_row, r) in state_clone.frame_data[frame].iter().enumerate() {
                     let mut frame_update: String = Default::default();
                     for (id_col, c) in r.iter().enumerate() {
                         if !last_frame.is_empty() {
-                            // Convert the RGB array (c) into a hex color string
-                            let html_color_str = to_hex_color(*c);
-                            if html_color_str != to_hex_color(last_frame[id_row][id_col]) {
-                                // Create the tile id using the row and column indices
+                            let html_color_str = rgb_to_rounded_hex_color_string(*c);
+                            if html_color_str
+                                != rgb_to_rounded_hex_color_string(last_frame[id_row][id_col])
+                            {
                                 let id = format!("{id_row}_{id_col}");
 
-                                // Generate the HTML body
                                 let body = html! {
-                                    #{"t"(id)} style={"top:"(id_row*SIZE_RECT as usize)"px; left:"(id_col*SIZE_RECT as usize)"px;background-color:"(html_color_str)";"} hx-swap-oob="true"  {}
+                                    #{"t"(id)} style={"top:"(id_row*size_rect as usize)"px; left:"(id_col*size_rect as usize)"px;background-color:"(html_color_str)";"} hx-swap-oob="true"  {}
                                 };
                                 frame_update += &body.into_string();
-                                // state_clone.broadcaster.broadcast(&body.into_string()).await;
                             }
                         }
                     }
@@ -115,14 +120,12 @@ async fn main() -> std::io::Result<()> {
                 }
             }
 
-            // println!("Color on {} updated to {}", id, html_color_str);
             println!("Iteration done.");
-            // Reset the flag to false when done
             is_running.store(false, Ordering::SeqCst);
         }
     });
 
-    log::info!("starting HTTP server at http://localhost:8080");
+    log::info!("starting HTTP server at {}:{}", args.bind_ip, args.port);
 
     HttpServer::new(move || {
         App::new()
@@ -133,13 +136,15 @@ async fn main() -> std::io::Result<()> {
             .service(fs::Files::new("/", "./public"))
             .wrap(Logger::default())
     })
-    .bind(("127.0.0.1", 8080))?
+    .bind((args.bind_ip, args.port))?
     .run()
     .await
 }
 
 #[get("/")]
 async fn index(state: web::Data<AppState>) -> impl Responder {
+    let size_rect = AppConfig::parse().size_rect;
+
     let body = html! {
         (DOCTYPE)
         html {
@@ -155,7 +160,7 @@ async fn index(state: web::Data<AppState>) -> impl Responder {
                 .wrapper {
                     @for row in &state.grid {
                         @for col in row {
-                           #{"t"(col.id)} style={"left:"(col.x*SIZE_RECT)"px; top:"(col.y*SIZE_RECT)"px;"}  { }
+                           #{"t"(col.id)} style={"left:"(col.x*size_rect)"px; top:"(col.y*size_rect)"px;"}  { }
                         }
                     }
                 }
