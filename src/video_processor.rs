@@ -1,14 +1,6 @@
 use ffmpeg::software::scaling::{context::Context as SwsContext, flag::Flags};
 use ffmpeg_next as ffmpeg;
 use image::{DynamicImage, GenericImageView, ImageBuffer, Pixel, Rgb};
-
-pub struct Tile {
-    pub id: String,
-    pub color: String,
-    pub x: i32,
-    pub y: i32
-}
-
 // Function to extract frames from the video and process them
 pub fn extract_and_process_frames(
     video_path: &str,
@@ -132,17 +124,3 @@ fn process_frame_to_grid(frame: DynamicImage, n_s: usize) -> Vec<Vec<[u8; 3]>> {
     grid
 }
 
-pub fn generate_grid(n: usize) -> Vec<Vec<Tile>> {
-    (0..n)
-        .map(|x| {
-            (0..n)
-                .map(|y| Tile {
-                    id: format!("{}_{}", x, y),
-                    x: x.try_into().unwrap(),
-                    y: y.try_into().unwrap(),
-                    color: "blue".to_string(),
-                })
-                .collect()
-        })
-        .collect()
-}

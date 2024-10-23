@@ -2,33 +2,24 @@ use actix_files as fs;
 use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
 use broadcast::Broadcaster;
 use clap::Parser;
-use hex_color::{Display, HexColor};
 use maud::{html, DOCTYPE};
-use rand::Rng;
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
-use tokio::time::interval;
-use utils::rgb_to_rounded_hex_color_string;
-use video_processor::{extract_and_process_frames, generate_grid, Tile};
+use std::sync::Arc;
+use stream_worker::start_sse_worker;
+use video_processor::extract_and_process_frames;
 
 mod broadcast;
+mod stream_worker;
 mod utils;
 mod video_processor;
 
-struct AppState {
+pub struct ServersideState {
     app_name: String,
-    grid: Vec<Vec<Tile>>,
-    frame_data: Vec<Vec<Vec<[u8; 3]>>>,
+    frame_data: Option<Vec<Vec<Vec<[u8; 3]>>>>,
     broadcaster: Arc<Broadcaster>,
 }
 
 #[derive(Parser, Clone)]
-struct AppConfig {
+struct CliConfiguration {
     mode: String,
     #[clap(default_value = "8080")]
     port: u16,
@@ -40,90 +31,38 @@ struct AppConfig {
     size_rect: i32,
     #[clap(default_value = "example.mp4")]
     video_path: String,
+    #[clap(default_value = "30")]
+    update_frequency: i32,
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let args = AppConfig::parse();
+    let args = CliConfiguration::parse();
 
     let mode = args.mode;
     let video_path = args.video_path;
     let grid_size = args.grid_size;
     let size_rect = args.size_rect;
+    let update_frequency = args.update_frequency;
+
 
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
-    let frame_data = extract_and_process_frames(&video_path, grid_size)?;
 
-    let state = Arc::new(AppState {
+    let mut frame_data = None;
+    if mode == "video" {
+        frame_data = Some(extract_and_process_frames(&video_path, grid_size)?);
+    }
+
+    let state = Arc::new(ServersideState {
         app_name: String::from("HTMX grid oob"),
-        grid: generate_grid(grid_size),
         frame_data,
         broadcaster: Broadcaster::create(),
     });
 
     let state_clone = Arc::clone(&state);
 
-    let is_running = Arc::new(AtomicBool::new(false));
-    actix_rt::spawn(async move {
-        if is_running.load(Ordering::SeqCst) {
-            return;
-        }
-
-        is_running.store(true, Ordering::SeqCst);
-
-        let mut rng_gen = rand::thread_rng();
-        let mut interval = interval(Duration::from_millis(60));
-        let mut frame = 0;
-        let mut last_frame: Vec<Vec<[u8; 3]>> = Vec::new();
-        loop {
-            interval.tick().await;
-
-            if mode == "random" {
-                let random_rgb: HexColor = rand::random();
-                let html_color_str = Display::new(random_rgb);
-
-                let id_row = rng_gen.gen_range(0..grid_size);
-                let id_col = rng_gen.gen_range(0..grid_size);
-                let id = format!("{id_row}_{id_col}");
-                let body = html! {
-                    #{"t"(id)} hx-swap-oob="true" style={"background:"(html_color_str)} { (id) }
-                };
-
-                state_clone.broadcaster.broadcast(&body.into_string()).await;
-            } else if mode == "video" {
-                for (id_row, r) in state_clone.frame_data[frame].iter().enumerate() {
-                    let mut frame_update: String = Default::default();
-                    for (id_col, c) in r.iter().enumerate() {
-                        if !last_frame.is_empty() {
-                            let html_color_str = rgb_to_rounded_hex_color_string(*c);
-                            if html_color_str
-                                != rgb_to_rounded_hex_color_string(last_frame[id_row][id_col])
-                            {
-                                let id = format!("{id_row}_{id_col}");
-
-                                let body = html! {
-                                    #{"t"(id)} style={"top:"(id_row*size_rect as usize)"px; left:"(id_col*size_rect as usize)"px;background-color:"(html_color_str)";"} hx-swap-oob="true"  {}
-                                };
-                                frame_update += &body.into_string();
-                            }
-                        }
-                    }
-                    // Broadcast the HTML to update the front end
-                    state_clone.broadcaster.broadcast(&frame_update).await;
-                }
-
-                last_frame = state_clone.frame_data[frame].clone();
-                frame += 1;
-                if frame >= state_clone.frame_data.len() {
-                    frame = 0;
-                }
-            }
-
-            println!("Iteration done.");
-            is_running.store(false, Ordering::SeqCst);
-        }
-    });
+    start_sse_worker(mode, grid_size, size_rect, update_frequency, state_clone);
 
     log::info!("starting HTTP server at {}:{}", args.bind_ip, args.port);
 
@@ -142,8 +81,9 @@ async fn main() -> std::io::Result<()> {
 }
 
 #[get("/")]
-async fn index(state: web::Data<AppState>) -> impl Responder {
-    let size_rect = AppConfig::parse().size_rect;
+async fn index(state: web::Data<ServersideState>) -> impl Responder {
+    let size_rect = CliConfiguration::parse().size_rect;
+    let grid_size = CliConfiguration::parse().grid_size as i32;
 
     let body = html! {
         (DOCTYPE)
@@ -158,9 +98,9 @@ async fn index(state: web::Data<AppState>) -> impl Responder {
                 h1 { "Htmx OOB grid" }
                 div hx-get="/data" hx-trigger="load" {}
                 .wrapper {
-                    @for row in &state.grid {
-                        @for col in row {
-                           #{"t"(col.id)} style={"left:"(col.x*size_rect)"px; top:"(col.y*size_rect)"px;"}  { }
+                    @for id_row in 0..grid_size {
+                        @for id_col in 0..grid_size {
+                           #{"t"(format!("{id_row}_{id_col}"))} style={"left:"(id_row*size_rect)"px; top:"(id_col*size_rect)"px;"}  { }
                         }
                     }
                 }
@@ -175,7 +115,7 @@ async fn index(state: web::Data<AppState>) -> impl Responder {
 }
 
 #[get("/events")]
-async fn event_stream(state: web::Data<AppState>) -> impl Responder {
+async fn event_stream(state: web::Data<ServersideState>) -> impl Responder {
     state.broadcaster.new_client().await
 }
 
