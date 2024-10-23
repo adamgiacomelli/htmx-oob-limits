@@ -20,17 +20,24 @@ pub struct ServersideState {
 
 #[derive(Parser, Clone)]
 struct CliConfiguration {
+    #[arg(short)]
     mode: String,
+    #[arg(short)]
     #[clap(default_value = "8080")]
     port: u16,
+    #[arg(short)]
     #[clap(default_value = "127.0.0.1")]
     bind_ip: String,
+    #[arg(short)]
     #[clap(default_value = "15")]
     grid_size: usize,
+    #[arg(short)]
     #[clap(default_value = "10")]
     size_rect: i32,
+    #[arg(short)]
     #[clap(default_value = "example.mp4")]
     video_path: String,
+    #[arg(short)]
     #[clap(default_value = "30")]
     update_frequency: i32,
 }
@@ -45,9 +52,7 @@ async fn main() -> std::io::Result<()> {
     let size_rect = args.size_rect;
     let update_frequency = args.update_frequency;
 
-
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
-
 
     let mut frame_data = None;
     if mode == "video" {

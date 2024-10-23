@@ -6,6 +6,9 @@ pub fn extract_and_process_frames(
     video_path: &str,
     n: usize,
 ) -> Result<Vec<Vec<Vec<[u8; 3]>>>, ffmpeg::Error> {
+
+    log::info!("Processing video file: {}", video_path);
+
     ffmpeg::init()?; // Initialize FFmpeg
 
     let mut ictx = ffmpeg::format::input(&video_path)?;
@@ -80,6 +83,8 @@ pub fn extract_and_process_frames(
 
     decoder.send_eof()?;
 
+
+    log::info!("Processing done.");
     Ok(fgrid)
 }
 fn process_frame_to_grid(frame: DynamicImage, n_s: usize) -> Vec<Vec<[u8; 3]>> {

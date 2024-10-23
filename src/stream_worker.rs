@@ -21,6 +21,7 @@ pub fn start_sse_worker(
     state_clone: Arc<ServersideState>,
 ) {
     let is_running = Arc::new(AtomicBool::new(false));
+
     actix_rt::spawn(async move {
         if is_running.load(Ordering::SeqCst) {
             return;
@@ -79,7 +80,6 @@ pub fn start_sse_worker(
                         frame = 0;
                     }
 
-                    println!("Iteration done.");
                     is_running.store(false, Ordering::SeqCst);
                 } else {
                     panic!("Video frame data missing")
