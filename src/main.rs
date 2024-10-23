@@ -35,7 +35,7 @@ struct CliConfiguration {
     #[clap(default_value = "10")]
     size_rect: i32,
     #[arg(short)]
-    #[clap(default_value = "example.mp4")]
+    #[clap(default_value = "./example.mp4")]
     video_path: String,
     #[arg(short)]
     #[clap(default_value = "30")]
