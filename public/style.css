@@ -1,15 +1,11 @@
-.tile {
-  border: 1px solid gray;
-  display: inline-block;
-  height: 50px;
-  width: 50px;
+.wrapper div{
+  position: absolute;
+  height: 10px;
+  width: 10px;
   text-align: center;
-}
-
-.row {
-  display: flex;
+  color: green;
 }
 
 .wrapper {
-
+  position: relative;
 }
