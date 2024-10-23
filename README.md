@@ -9,7 +9,12 @@ The idea behind this prototype is to try to see how far we can take a SSE setup 
 ## Running the project
 
 ```
-cargo run <mode>
+cargo run -- -m <mode>
+```
+
+For all cli parameters run:
+```
+cargo run -- -h
 ```
 
 ## Modes
