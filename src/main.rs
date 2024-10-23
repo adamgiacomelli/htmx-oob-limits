@@ -32,7 +32,7 @@ struct CliConfiguration {
     #[clap(default_value = "15")]
     grid_size: usize,
     #[arg(short)]
-    #[clap(default_value = "10")]
+    #[clap(default_value = "50")]
     size_rect: i32,
     #[arg(short)]
     #[clap(default_value = "./example.mp4")]
@@ -87,8 +87,9 @@ async fn main() -> std::io::Result<()> {
 
 #[get("/")]
 async fn index(state: web::Data<ServersideState>) -> impl Responder {
-    let size_rect = CliConfiguration::parse().size_rect;
-    let grid_size = CliConfiguration::parse().grid_size as i32;
+    let cfg = CliConfiguration::parse();
+    let size_rect = cfg.size_rect;
+    let grid_size = cfg.grid_size as i32;
 
     let body = html! {
         (DOCTYPE)
@@ -101,6 +102,12 @@ async fn index(state: web::Data<ServersideState>) -> impl Responder {
             }
             body {
                 h1 { "Htmx OOB grid" }
+                ul.info {
+                    li {"Mode: "(cfg.mode)}
+                    li {"Grid size: "(grid_size)}
+                    li {"Update frequency: "(cfg.update_frequency)}
+
+                }
                 div hx-get="/data" hx-trigger="load" {}
                 .wrapper {
                     @for id_row in 0..grid_size {

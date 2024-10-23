@@ -31,8 +31,8 @@ pub fn start_sse_worker(
 
         let mut rng_gen = rand::thread_rng();
 
-        let delay = 1000.0 / update_frequency as f32;
-        let mut interval = interval(Duration::from_millis(delay as u64));
+        let delay = 1_000_000.0 / update_frequency as f32;
+        let mut interval = interval(Duration::from_micros(delay as u64));
 
         let mut frame = 0;
         let mut last_frame: Vec<Vec<[u8; 3]>> = Vec::new();
